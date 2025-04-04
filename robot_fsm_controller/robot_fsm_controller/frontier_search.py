@@ -15,7 +15,7 @@ Description:
     Note: Not a ROS2 Node.
 
 Modifications:
-    - Minimal Changes were made.
+    - Minimal Changes were made.s
 ======================================================================
 """
 from .path_planner import PathPlanner
@@ -28,7 +28,7 @@ from cde2310_interfaces.msg import Frontier, FrontierList
 Fine-tuning Parameter to determine minimum frontier size.
 This variable is used in FrontierSearch::search()
 '''
-MIN_FRONTIER_SIZE = 5 
+MIN_FRONTIER_SIZE = 3
 
 '''
 Fine-tuning Parameter to determine walkable threshold.
@@ -38,7 +38,7 @@ obstacle.
 The value should only be from 0 to 100.
 This variable is used in FrontierSearch::is_new_frontier_cell()
 '''
-WALKABLE_THRESHOLD = 65
+WALKABLE_THRESHOLD = 50
 ####################################################################
 
 class FrontierSearch:

@@ -38,15 +38,15 @@ from cde2310_interfaces.srv import ActivateNode
 TIMER_PERIOD = 0.05
 
 # Pure pursuit parameters
-LOOKAHEAD_DISTANCE = 0.4  # m
+LOOKAHEAD_DISTANCE = 0.5  # m original: 0.2
 WHEEL_BASE = 0.16  #  m # doesnt do anything for now
-MAX_DRIVE_SPEED = 0.1  # m/s
+MAX_DRIVE_SPEED = 0.2  # m/s
 MAX_TURN_SPEED = 1.25  # rad/s
 TURN_SPEED_KP = 1.25
-DISTANCE_TOLERANCE = 0.2  # m
+DISTANCE_TOLERANCE = 0.2 # m
 
 # Obstacle avoidance parameters
-OBSTACLE_AVOIDANCE_GAIN = 0.2
+OBSTACLE_AVOIDANCE_GAIN = 0.3
 OBSTACLE_AVOIDANCE_MAX_SLOW_DOWN_DISTANCE = 0.16  # m
 OBSTACLE_AVOIDANCE_MIN_SLOW_DOWN_DISTANCE = 0.12  # m
 OBSTACLE_AVOIDANCE_MIN_SLOW_DOWN_FACTOR = 0.25
@@ -89,11 +89,11 @@ class PurePursuit(Node):
         # Server: Handle Start/Stop Pure Pursuit
         self.PurePursuitServer = self.create_service(ActivateNode, 'activate_pure_pursuit', self.activate_pure_pursuit_callback)
 
-        # Client: Inform Exploration Node If Pure Pursuit Complete
-        self.PurePursuitStatusClient = self.create_client(NodeFinish, 'pure_pursuit_finish')
-        while not self.PurePursuitStatusClient.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info("Service for pure_pursuit_finish not available, waiting again...")
-        self.isPurePursuitComplete = NodeFinish.Request()
+        # # Client: Inform Exploration Node If Pure Pursuit Complete
+        # self.PurePursuitStatusClient = self.create_client(NodeFinish, 'pure_pursuit_finish')
+        # while not self.PurePursuitStatusClient.wait_for_service(timeout_sec=1.0):
+        #     self.get_logger().info("Service for pure_pursuit_finish not available, waiting again...")
+        # self.isPurePursuitComplete = NodeFinish.Request()
 
         # Publishers
         self.cmd_vel_pub = self.create_publisher(
@@ -129,7 +129,7 @@ class PurePursuit(Node):
         self.map = None
         self.path = Path()
         self.alpha = 0
-        self.enabled = False
+        self.enabled = True
         self.reversed = False
         self.closest_distance = float("inf")
     
@@ -153,10 +153,10 @@ class PurePursuit(Node):
             return response
     
     # ############# Client Call: Notify Exploration Node About Pure Pursuit Completion ############# # [service: pure_pursuit_finish]
-    def pure_pursuit_complete(self, finish):
-        """ Sends a message to Exploration Node if pure pursuit is complete"""
-        self.isPurePursuitComplete.finish = finish
-        return self.PurePursuitStatusClient.call_async(self.isPurePursuitComplete)
+    # def pure_pursuit_complete(self, finish):
+    #     """ Sends a message to Exploration Node if pure pursuit is complete"""
+    #     self.isPurePursuitComplete.finish = finish
+    #     return self.PurePursuitStatusClient.call_async(self.isPurePursuitComplete)
 
     # Main Function
     def run_loop_callback(self):
@@ -172,7 +172,7 @@ class PurePursuit(Node):
         # If no path, stop
         if self.path is None or not self.path.poses:
             self.stop()
-            self.pure_pursuit_complete(True)
+            #self.pure_pursuit_complete(True)
             return
 
         goal = self.get_goal()

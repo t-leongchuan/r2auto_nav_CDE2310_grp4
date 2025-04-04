@@ -28,6 +28,9 @@ from typing import Union
 from std_msgs.msg import Header
 from nav_msgs.msg import GridCells, OccupancyGrid, Path
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
+import random
+
+from collections import deque
 
 '''
 TODO: Description of class
@@ -49,10 +52,10 @@ This is based on the Occupancy Grid Values, where:
 100 Means it is occupied (i.e. Obstacle/Wall)
 -1 means unknown.
 '''
-WALKABLE_THRESHOLD = 65
+WALKABLE_THRESHOLD = 50
 
 # Prevent paths that are too short
-MIN_PATH_LENGTH = 4
+MIN_PATH_LENGTH = 2
 
 
 PADDING = 2  # The number of cells around the obstacles
@@ -353,6 +356,11 @@ class PathPlanner:
         # 
         map[map == 255] = 0
 
+        ## See which one works better. 
+        #
+        #map[map == 255] = 70  # Treat unknown as obstructed
+
+
         # Dilation occurs here to "thicken" obstacles so that robot will keep
         # safe distance from robot
         #
@@ -552,8 +560,9 @@ class PathPlanner:
                 return current
 
             for neighbor in PathPlanner.neighbors_of_4(mapdata, current, False):
-                visited[neighbor] = True
-                queue.append(neighbor)
+                if neighbor not in visited:
+                    visited[neighbor] = True
+                    queue.append(neighbor)
 
         # If nothing found, just return original start cell
         return start
@@ -586,7 +595,16 @@ class PathPlanner:
         came_from = {}
         came_from[start] = None
 
+        cur_iteration = 0
+        MAX_ITERATION = 10000
+
         while not pq.empty():
+
+            if (cur_iteration == MAX_ITERATION):
+                return (None, None, start, goal)
+            
+            cur_iteration += 1
+            
             current = pq.get()
 
             if current == goal:
@@ -638,6 +656,7 @@ class PathPlanner:
         path = path[:-POSES_TO_TRUNCATE]
 
         return (path, distance_cost_so_far[goal], start, goal)
+    
 
     @staticmethod
     def path_to_message(mapdata: OccupancyGrid, path: "list[tuple[int, int]]") -> Path:
@@ -648,3 +667,4 @@ class PathPlanner:
         """
         poses = PathPlanner.path_to_poses(mapdata, path)
         return Path(header=Header(frame_id="map"), poses=poses)
+    

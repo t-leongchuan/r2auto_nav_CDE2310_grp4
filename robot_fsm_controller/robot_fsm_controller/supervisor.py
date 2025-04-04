@@ -39,17 +39,16 @@ class Supervisor(Node):
         # ############# THERMAL SENSOR Server Creation: Notify New Target Found ############# #
         self.ThermalTargetServer = self.create_service(ActivateNode, 'target_detected', self.thermal_target_callback)
         
-        # Alignment Node Not Used
-        '''
-        # # ############# ALIGNMENT Client Creation: Activate Alignment ############# #
-        # self.AlignmentClient = self.create_client(ActivateNode, 'activate_alignment')
-        # # while not self.AlignmentClient.wait_for_service(timeout_sec=1.0):
-        # #     self.get_logger().info('alignment service not available, waiting again...')
-        # self.ActivateAlignment = ActivateNode.Request()
+        
+        # ############# ALIGNMENT Client Creation: Activate Alignment ############# #
+        self.AlignmentClient = self.create_client(ActivateNode, 'activate_alignment')
+        while not self.AlignmentClient.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('alignment service not available, waiting again...')
+        self.ActivateAlignment = ActivateNode.Request()
         
         # ############# ALIGNMENT Server Creation: Receive Alignment Completion Status ############# #
         self.AlignmentStatusServer = self.create_service(NodeFinish, 'alignment_finish', self.alignment_status_callback)
-        '''
+        
 
         # ############# FIRING Client Creation: Activate Firing ############# #
         self.FiringClient = self.create_client(ActivateNode, 'activate_firing')
@@ -57,7 +56,7 @@ class Supervisor(Node):
             self.get_logger().info('firing service not available, waiting again...')
         self.ActivateFiring = ActivateNode.Request()
 
-        # ############# FIRING Server Creation: Receive Exploration Completion Status ############# #
+        # # ############# FIRING Server Creation: Receive Exploration Completion Status ############# #
         self.FiringStatusServer = self.create_service(NodeFinish, 'firing_finish', self.firing_status_callback)
 
         # ############# Timed callback to run primary functions ############# #
@@ -93,7 +92,6 @@ class Supervisor(Node):
             return response
     
     # Alignment Not Used
-    '''
     # ############# ALIGNMENT Client Call: Request to Start/Stop Alignment ############# #
     def toggle_alignment(self, activate):
         self.ActivateAlignment.activate = activate
@@ -114,7 +112,6 @@ class Supervisor(Node):
             self.toggle_firing(True)
             response.message = "Supervisor Acknowledges Alignment Is Finished."
             return response
-    '''
 
 
 
