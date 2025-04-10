@@ -25,7 +25,10 @@ setup(
             'alignment = robot_fsm_controller.alignment:main',
             'pursuit = robot_fsm_controller.pure_pursuit:main',
             'frontier = robot_fsm_controller.frontier_exploration:main',
-            'test = robot_fsm_controller.occgrid_test:main',
+            'occgrid = robot_fsm_controller.occgrid_test:main',
+            'random = robot_fsm_controller.frontier_exploration_test:main',
+            'thermal_detect = robot_fsm_controller.thermal_target:main',
+            'firing = robot_fsm_controller.firing:main',
         ],
     },
 )

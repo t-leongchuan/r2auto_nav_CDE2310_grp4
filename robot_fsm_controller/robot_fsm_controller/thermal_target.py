@@ -51,7 +51,7 @@ class ThermalTarget(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # Thermal Sensor Client Creation: Activate Firing Sequence
+        # Thermal Sensor Client Creation: forwards to supervisor node to activate alignment
         self.ThermalTargetClient = self.create_client(ActivateNode, 'target_detected')
         while not self.ThermalTargetClient.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Thermal Target Service not available, waiting again...')

@@ -33,30 +33,65 @@ from rclpy.duration import Duration
 from cde2310_interfaces.srv import NodeFinish
 from cde2310_interfaces.srv import ActivateNode
 
-###################################################################
+##################################################################
+# ==================================================================
+# Constants for path following and obstacle avoidance
+# ==================================================================
 
+# Timer callback interval (in seconds)
 TIMER_PERIOD = 0.05
 
-# Pure pursuit parameters
-LOOKAHEAD_DISTANCE = 0.5  # m original: 0.2
-WHEEL_BASE = 0.16  #  m # doesnt do anything for now
-MAX_DRIVE_SPEED = 0.2  # m/s
-MAX_TURN_SPEED = 1.25  # rad/s
+# Lookahead distance to next waypoint (in meters)
+# Effect: Shorter = more responsive, safer in tight spaces
+LOOKAHEAD_DISTANCE = 0.15
+
+# Distance between front and rear wheels (not currently used)
+WHEEL_BASE = 0.16
+
+# Max linear drive speed (m/s)
+# Effect: Lower speed = more control, less momentum during turns
+MAX_DRIVE_SPEED = 0.08
+
+# Max angular speed (rad/s)
+MAX_TURN_SPEED = 1.25
+
+# Proportional gain for turn rate
 TURN_SPEED_KP = 1.25
-DISTANCE_TOLERANCE = 0.2 # m
 
-# Obstacle avoidance parameters
-OBSTACLE_AVOIDANCE_GAIN = 0.3
-OBSTACLE_AVOIDANCE_MAX_SLOW_DOWN_DISTANCE = 0.16  # m
-OBSTACLE_AVOIDANCE_MIN_SLOW_DOWN_DISTANCE = 0.12  # m
+# Goal tolerance in meters
+# Effect: Stops robot if this close to final waypoint
+DISTANCE_TOLERANCE = 0.05
+
+# How aggressively to avoid walls
+# Effect: Higher = sharper turning away from obstacles
+OBSTACLE_AVOIDANCE_GAIN = 0.5
+
+# Distance to begin slowing down when near obstacles (m)
+# Effect: Starts soft braking earlier to prevent bumps
+OBSTACLE_AVOIDANCE_MAX_SLOW_DOWN_DISTANCE = 0.16
+
+# Minimum distance to trigger max slow down (m)
+OBSTACLE_AVOIDANCE_MIN_SLOW_DOWN_DISTANCE = 0.15
+
+# Minimum factor to scale drive speed during slow-down (0.0 to 1.0)
 OBSTACLE_AVOIDANCE_MIN_SLOW_DOWN_FACTOR = 0.25
-FOV = 200  # degrees
-FOV_DISTANCE = 25  # Number of grid cells
-FOV_DEADZONE = 80  # degrees
-SMALL_FOV = 300  # degrees
-SMALL_FOV_DISTANCE = 10  # Number of grid cells
 
-###################################################################
+# Field of View for obstacle checking (degrees)
+FOV = 200
+
+# Forward distance to check for obstacles (in grid cells)
+FOV_DISTANCE = 25
+
+# Region in front of robot to ignore for obstacle avoidance (degrees)
+FOV_DEADZONE = 80
+
+# Secondary wide FOV when close to objects (degrees)
+SMALL_FOV = 300
+
+# Range for secondary FOV (in grid cells)
+SMALL_FOV_DISTANCE = 10
+##################################################################
+
 
 def euler_from_quaternion(x, y, z, w):
     """
@@ -203,7 +238,8 @@ class PurePursuit(Node):
             self.alpha += 2 * np.pi
 
         # If the lookahead is behind the robot, follow the path backwards
-        self.reversed = abs(self.alpha) > np.pi / 2
+        # Disable backwards navigation altogether
+        #self.reversed = abs(self.alpha) > np.pi / 2
 
         # Calculate the lookahead distance and center of curvature
         lookahead_distance = PurePursuit.distance(x, y, lookahead.x, lookahead.y)
@@ -397,15 +433,20 @@ class PurePursuit(Node):
         return nearest_waypoint_index
 
     def find_lookahead(self, nearest_waypoint_index, lookahead_distance) -> Point:
-        if self.path.poses is None:
+        # If there is no path or no poses, return a default Point.
+        if self.path is None or not self.path.poses:
             return Point()
 
+        # If nearest_waypoint_index is negative, default to the first pose.
+        if nearest_waypoint_index < 0:
+            nearest_waypoint_index = 0
+
         i = nearest_waypoint_index
-        while (
-            i < len(self.path.poses)
-            and self.get_distance_to_waypoint_index(i) < lookahead_distance
-        ):
+        while i < len(self.path.poses) and self.get_distance_to_waypoint_index(i) < lookahead_distance:
             i += 1
+        # If i is zero, return the first pose; else return the previous pose.
+        if i == 0:
+            return self.path.poses[0].pose.position
         return self.path.poses[i - 1].pose.position
 
     def get_goal(self) -> Point:

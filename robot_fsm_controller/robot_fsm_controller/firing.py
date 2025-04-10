@@ -1,9 +1,5 @@
 '''
-TODO: 
-The Code given below is a quick prototype as to how the firing node should look like
-and should be used more as a reference/template rather than used.
-
-The Code may have errors as it is written speculatively.
+Firing Node that runs on the remote computer that sends a command to the turtlebot to commence firing.
 '''
 import rclpy
 from rclpy.node import Node

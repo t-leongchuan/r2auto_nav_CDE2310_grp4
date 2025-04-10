@@ -23,23 +23,19 @@ from nav_msgs.msg import OccupancyGrid
 from cde2310_interfaces.msg import Frontier, FrontierList
 
 
-###################################################################
-'''
-Fine-tuning Parameter to determine minimum frontier size.
-This variable is used in FrontierSearch::search()
-'''
-MIN_FRONTIER_SIZE = 3
 
-'''
-Fine-tuning Parameter to determine walkable threshold.
-We define WALKABLE_THRESHOLD as the cell_value we are confident in that is not an
-obstacle.
+# ==============================================================================
+# Constants for filtering and validating frontier cells
+# ==============================================================================
 
-The value should only be from 0 to 100.
-This variable is used in FrontierSearch::is_new_frontier_cell()
-'''
+# Maximum value to consider a cell walkable (lower = more cautious)
+# Effect: Helps ignore semi-transparent obstacles or fuzzy edges
 WALKABLE_THRESHOLD = 50
-####################################################################
+
+# Minimum frontier size in number of cells
+# Effect: Filters out tiny, unreachable gaps
+MIN_FRONTIER_SIZE = 4
+
 
 class FrontierSearch:
     

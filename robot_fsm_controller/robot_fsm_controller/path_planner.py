@@ -32,6 +32,8 @@ import random
 
 from collections import deque
 
+
+
 '''
 TODO: Description of class
 
@@ -52,13 +54,27 @@ This is based on the Occupancy Grid Values, where:
 100 Means it is occupied (i.e. Obstacle/Wall)
 -1 means unknown.
 '''
-WALKABLE_THRESHOLD = 50
 
-# Prevent paths that are too short
-MIN_PATH_LENGTH = 2
+# ==============================================================================
+# Constants used for collision avoidance and path planning
+# ==============================================================================
+
+# Inflate obstacles by this many grid cells to create buffer around walls
+# Effect: Keeps robot safely away from narrow gaps and thin obstacles
+PADDING = 4
+
+# Weight of obstacle proximity in A* pathfinding
+# Effect: Higher value makes robot stay closer to hallway centers
+COST_MAP_WEIGHT = 3000
+
+# Minimum path length before accepting a planned path
+# Effect: Filters out tiny risky paths that may lead into corners
+MIN_PATH_LENGTH = 5
+
+# Anything below this occupancy value is considered walkable.
+WALKABLE_THRESHOLD = 70
 
 
-PADDING = 2  # The number of cells around the obstacles
 
 ####################################################################
 
@@ -574,8 +590,6 @@ class PathPlanner:
         start: "tuple[int, int]",
         goal: "tuple[int, int]",
     ) -> "tuple[Union[list[tuple[int, int]], None], Union[float, None], tuple[int, int], tuple[int, int]]":
-        # What is this return type
-        COST_MAP_WEIGHT = 1000
 
         # If the start cell is not walkable, get the first walkable neighbor instead
         if not PathPlanner.is_cell_walkable(mapdata, start):

@@ -10,7 +10,7 @@ TIMER_PERIOD = 0.05 # interval between running main logic
 
 class State(Enum):
     EXPLORATION = 1
-    ALIGNMENT = 2 # Not Used For now
+    ALIGNMENT = 2
     FIRING = 3
     POST_FIRING_RECOVERY = 4 # Not Used For Now
 
@@ -50,7 +50,7 @@ class Supervisor(Node):
         self.AlignmentStatusServer = self.create_service(NodeFinish, 'alignment_finish', self.alignment_status_callback)
         
 
-        # ############# FIRING Client Creation: Activate Firing ############# #
+        ############# FIRING Client Creation: Activate Firing ############# #
         self.FiringClient = self.create_client(ActivateNode, 'activate_firing')
         while not self.FiringClient.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('firing service not available, waiting again...')
@@ -96,7 +96,8 @@ class Supervisor(Node):
     def toggle_alignment(self, activate):
         self.ActivateAlignment.activate = activate
         self.state = State.Alignment
-        return self.AlignmentClient.call_async(self.ActivateExploration)
+        return self.AlignmentClient.call_async(self.ActivateAlignment)
+
     
     # ############# ALIGNMENT Server Response: Handle Alignment Completion Feedback ############# #
     def alignment_status_callback(self, request, response):
@@ -104,7 +105,9 @@ class Supervisor(Node):
         
         if not activate:
             self.get_logger().info('Alignment Node Has Declared Alignment Not Complete.')
-            response.message = "Supervisor Acknowledges Alignment Is not Finished."
+            response.message = "Supervisor Acknowledges Alignment Is not Finished. Reactivating Exploration."
+            self.state = State.Exploration
+            self.toggle_exploration(True)
             return response
             
         if activate:
@@ -142,15 +145,29 @@ class Supervisor(Node):
         finish_firing = request.finish
 
         if finish_firing:
+            self.COMPLETED_TARGETS += 1
+            self.get_logger().info(f"Completed targets: {self.COMPLETED_TARGETS}/{NUM_TARGETS}")
             response.message = "Supervisor Acknowledges Firing Is Finished."
-            self.COMPLETED_TARGETS = self.COMPLETED_TARGETS + 1
+
+            if self.COMPLETED_TARGETS >= NUM_TARGETS:
+                self.get_logger().info("All targets completed. Mission complete.")
+                self.IS_MISSION_COMPLETE = True
+            else:
+                self.state = State.EXPLORATION
+                self.toggle_exploration(True)
+
             return response
         else:
             response.message = "Supervisor Acknowledges Firing Is Not Finished."
             return response
 
+
     # TODO
     def clean_up(self):
+        self.get_logger().info("Shutting down. Mission complete.")
+        self.toggle_exploration(False)
+        self.toggle_alignment(False)
+        self.toggle_firing(False)
         return
 
     def run_main_loop_callback(self):
