@@ -1,84 +1,36 @@
-"""
-======================================================================
-File: frontier_search.py
-Author: Toh Leong Chuan
-Date: 16/03/25
-
-This file is based on original code and ideas by:
-    Kai Nakamura
-    https://kainakamura.com/project/slam-robot
-
-Description:
-    A Utility-Based class providing methods to build a ROS2 Path.
-    
-    Note: Not a ROS2 Node.
-
-Modifications:
-    - Minimal Changes were made.
-======================================================================
-"""
-
 import math
-import cv2 
-import rclpy
-import heapq
+import cv2
 import numpy as np
-from rclpy.node import Node
 from typing import Union
 from std_msgs.msg import Header
 from nav_msgs.msg import GridCells, OccupancyGrid, Path
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
-import random
-
-from collections import deque
+import heapq
 
 
-
-'''
-TODO: Description of class
-
-Note: Not a ROS2 Node.
-'''
-
-
-####################################################################
 DIRECTIONS_OF_4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTIONS_OF_8 = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
+class PriorityQueue:
+    def __init__(self):
+        self.elements = []
+        self.counter = 0  # used as a tie-breaker for items with the same priority
 
-'''
-WALKABLE_THRESHOLD:
-Values should be between 0 to 100.
-This is based on the Occupancy Grid Values, where:
-0 Means it is unoccupied,
-100 Means it is occupied (i.e. Obstacle/Wall)
--1 means unknown.
-'''
+    def empty(self):
+        """Return True if the queue is empty."""
+        return not self.elements
 
-# ==============================================================================
-# Constants used for collision avoidance and path planning
-# ==============================================================================
+    def put(self, item, priority):
+        """Insert an item with the given priority into the queue."""
+        # Heap items are tuples of (priority, counter, item)
+        heapq.heappush(self.elements, (priority, self.counter, item))
+        self.counter += 1
 
-# Inflate obstacles by this many grid cells to create buffer around walls
-# Effect: Keeps robot safely away from narrow gaps and thin obstacles
-PADDING = 4
-
-# Weight of obstacle proximity in A* pathfinding
-# Effect: Higher value makes robot stay closer to hallway centers
-COST_MAP_WEIGHT = 3000
-
-# Minimum path length before accepting a planned path
-# Effect: Filters out tiny risky paths that may lead into corners
-MIN_PATH_LENGTH = 4
-
-# Anything below this occupancy value is considered walkable.
-WALKABLE_THRESHOLD = 70
+    def get(self):
+        """Remove and return the item with the lowest priority."""
+        return heapq.heappop(self.elements)[2]
 
 
-
-####################################################################
-
-# To replace importing from tf.transformations
 def quaternion_from_euler(ai, aj, ak):
     ai /= 2.0
     aj /= 2.0
@@ -102,21 +54,6 @@ def quaternion_from_euler(ai, aj, ak):
 
     return q
 
-# To replace importing from tf.transformations
-class PriorityQueue:
-    def __init__(self):
-        self.elements = []
-        self.counter = 0
-
-    def empty(self):
-        return not self.elements
-
-    def put(self, item, priority):
-        heapq.heappush(self.elements, (priority, self.counter, item))
-        self.counter += 1
-
-    def get(self):
-        return heapq.heappop(self.elements)[2]
 
 class PathPlanner:
 
@@ -138,7 +75,6 @@ class PathPlanner:
         """
         return mapdata.data[PathPlanner.grid_to_index(mapdata, p)]
 
-    
     @staticmethod
     def euclidean_distance(
         p1: "tuple[float, float]", p2: "tuple[float, float]"
@@ -161,11 +97,7 @@ class PathPlanner:
         """
         x = (p[0] + 0.5) * mapdata.info.resolution + mapdata.info.origin.position.x
         y = (p[1] + 0.5) * mapdata.info.resolution + mapdata.info.origin.position.y
-        point = Point()
-        point.x = x
-        point.y = y
-        point.z = 0.0
-        return point
+        return Point(x, y, 0)
 
     @staticmethod
     def world_to_grid(mapdata: OccupancyGrid, wp: Point) -> "tuple[int, int]":
@@ -198,17 +130,12 @@ class PathPlanner:
                     next_cell[1] - cell[1], next_cell[0] - cell[0]
                 )
             q = quaternion_from_euler(0, 0, angle_to_next)
-            quaternion = Quaternion()
-            quaternion.x = q[0]
-            quaternion.y = q[1]
-            quaternion.z = q[2]
-            quaternion.w = q[3]
             poses.append(
                 PoseStamped(
                     header=Header(frame_id="map"),
                     pose=Pose(
                         position=PathPlanner.grid_to_world(mapdata, cell),
-                        orientation=quaternion,
+                        orientation=Quaternion(q[0], q[1], q[2], q[3]),
                     ),
                 )
             )
@@ -240,6 +167,7 @@ class PathPlanner:
         if not PathPlanner.is_cell_in_bounds(mapdata, p):
             return False
 
+        WALKABLE_THRESHOLD = 50
         return PathPlanner.get_cell_value(mapdata, p) < WALKABLE_THRESHOLD
 
     @staticmethod
@@ -335,7 +263,6 @@ class PathPlanner:
             cells=world_cells,
         )
 
-   # C-Space: Configuration Space. Makes the Robot easier to plan paths
     @staticmethod
     def calc_cspace(
         mapdata: OccupancyGrid, include_cells: bool
@@ -346,6 +273,7 @@ class PathPlanner:
         :param mapdata [OccupancyGrid] The map data.
         :return        [OccupancyGrid] The C-Space.
         """
+        PADDING = 5  # The number of cells around the obstacles
 
         # Create numpy grid from mapdata
         width = mapdata.info.width
@@ -353,43 +281,21 @@ class PathPlanner:
         map = np.array(mapdata.data).reshape(width, height).astype(np.uint8)
 
         # Get mask of unknown areas
-        #
-        # This literally just gives another matrix where it is all 0 for entries that 
-        # are not 255 and 255 for entries that are 255
         unknown_area_mask = cv2.inRange(
             map, 255, 255
         )  # -1 overflows to 255 when cast to uint8
-
-        ## Likely a 5x5 matrix with all 1s
         kernel = np.ones((PADDING, PADDING), dtype=np.uint8)
-
-        # Erosion occurs here to shrink these regions, so core, central part
-        # of unknown area remain.
         unknown_area_mask = cv2.erode(unknown_area_mask, kernel, iterations=1)
 
         # Change unknown areas to free space
-        #
-        # 
         map[map == 255] = 0
 
-        ## See which one works better. 
-        #
-        #map[map == 255] = 70  # Treat unknown as obstructed
-
-
-        # Dilation occurs here to "thicken" obstacles so that robot will keep
-        # safe distance from robot
-        #
-        #
-        #
+        # Inflate the obstacles where necessary
         kernel = np.ones((PADDING, PADDING), np.uint8)
         obstacle_mask = cv2.dilate(map, kernel, iterations=1)
-
-
         cspace_data = cv2.bitwise_or(obstacle_mask, unknown_area_mask)
         cspace_data = np.array(cspace_data).reshape(width * height).tolist()
 
-        cspace_data = np.clip(cspace_data, -1, 100).tolist()
         # Return the C-space
         cspace = OccupancyGrid(
             header=mapdata.header, info=mapdata.info, data=cspace_data
@@ -399,8 +305,11 @@ class PathPlanner:
         cspace_cells = None
         if include_cells:
             cells = []
+
+            # Find the indices of the obstacle cells
             obstacle_indices = np.where(obstacle_mask > 0)
 
+            # Convert the indices to cell coordinates and append them to cells
             for y, x in zip(*obstacle_indices):
                 cells.append((x, y))
 
@@ -423,7 +332,6 @@ class PathPlanner:
     @staticmethod
     def calc_cost_map(mapdata: OccupancyGrid) -> np.ndarray:
 
-
         # Create numpy array from mapdata
         width = mapdata.info.width
         height = mapdata.info.height
@@ -431,26 +339,18 @@ class PathPlanner:
         map[map == 255] = 100
 
         # Iteratively dilate the walls until no changes are made
-        #
-        # cost_map -> initialize to all zeros, same size as map
-        # Recap: values with "100" means cell is occupied
         cost_map = np.zeros_like(map)
         dilated_map = map.copy()
         iterations = 0
         kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], np.uint8)
-        #
-        #
-        # What this is trying to do:
-        # Create a cost-map where the lower the cost,
-        # the closer the cell is to a wall.
         while np.any(dilated_map == 0):
             # Increase iterations
             iterations += 1
 
-            # Dilate the Map. Combined with subtracting, creates a "ripple-like" effect
+            # Dilate the map
             next_dilated_map = cv2.dilate(dilated_map, kernel, iterations=1)
 
-            # Create an outline (we can imagine concentrated circle - blurred circle)
+            # Get the difference between the next dilated map and the current one to get an outline
             difference = next_dilated_map - dilated_map
 
             # Assign all non-zero cells in the outline their cost
@@ -511,14 +411,9 @@ class PathPlanner:
         mask = np.zeros_like(cost_map, dtype=bool)
 
         # Get the indices of the non-zero cells in the cost_map
-        # nonzero returns a tuple(array, array)
-        # tuple([coordinate of y (rownumber)], [coordinate of x (column no)])
         non_zero_indices = np.nonzero(cost_map)
 
         # Iterate over the non-zero cells in the cost_map
-        # y -> row number
-        # x -> column number
-        # zipping just produces (y, x) tuple
         for y, x in zip(*non_zero_indices):
             # If the cell is a hallway cell, set the corresponding cell in the mask to True
             if PathPlanner.is_hallway_cell(mapdata, cost_map, (x, y), threshold):
@@ -526,11 +421,6 @@ class PathPlanner:
 
         return mask.astype(np.uint8)
 
-    # Hall Way cell:
-    # A robotic system designed for navigating and operating within a cooridor or hallway 
-    # environment?
-    #
-    # Or does it mean that the cells are likely to be "in a hallway"?
     @staticmethod
     def is_hallway_cell(
         mapdata: OccupancyGrid,
@@ -576,9 +466,8 @@ class PathPlanner:
                 return current
 
             for neighbor in PathPlanner.neighbors_of_4(mapdata, current, False):
-                if neighbor not in visited:
-                    visited[neighbor] = True
-                    queue.append(neighbor)
+                visited[neighbor] = True
+                queue.append(neighbor)
 
         # If nothing found, just return original start cell
         return start
@@ -590,6 +479,7 @@ class PathPlanner:
         start: "tuple[int, int]",
         goal: "tuple[int, int]",
     ) -> "tuple[Union[list[tuple[int, int]], None], Union[float, None], tuple[int, int], tuple[int, int]]":
+        COST_MAP_WEIGHT = 1000
 
         # If the start cell is not walkable, get the first walkable neighbor instead
         if not PathPlanner.is_cell_walkable(mapdata, start):
@@ -609,16 +499,7 @@ class PathPlanner:
         came_from = {}
         came_from[start] = None
 
-        cur_iteration = 0
-        MAX_ITERATION = 10000
-
         while not pq.empty():
-
-            if (cur_iteration == MAX_ITERATION):
-                return (None, None, start, goal)
-            
-            cur_iteration += 1
-            
             current = pq.get()
 
             if current == goal:
@@ -632,18 +513,9 @@ class PathPlanner:
                     + COST_MAP_WEIGHT
                     * PathPlanner.get_cost_map_value(cost_map, neighbor)
                 )
-                
-                
                 new_cost = cost_so_far[current] + added_cost
-                
-                # Check if the neighbour is already inside the dictionary,
-                # and if the new cost calculated is more than cost so far
-                # i.e. there is a better cost
                 if not neighbor in cost_so_far or new_cost < cost_so_far[neighbor]:
-                    # Assign better cost to neighbour
                     cost_so_far[neighbor] = new_cost
-                    
-                    #
                     distance_cost_so_far[neighbor] = (
                         distance_cost_so_far[current] + distance
                     )
@@ -662,6 +534,8 @@ class PathPlanner:
             else:
                 return (None, None, start, goal)
 
+        # Prevent paths that are too short
+        MIN_PATH_LENGTH = 12
         if len(path) < MIN_PATH_LENGTH:
             return (None, None, start, goal)
 
@@ -670,7 +544,6 @@ class PathPlanner:
         path = path[:-POSES_TO_TRUNCATE]
 
         return (path, distance_cost_so_far[goal], start, goal)
-    
 
     @staticmethod
     def path_to_message(mapdata: OccupancyGrid, path: "list[tuple[int, int]]") -> Path:
@@ -681,4 +554,77 @@ class PathPlanner:
         """
         poses = PathPlanner.path_to_poses(mapdata, path)
         return Path(header=Header(frame_id="map"), poses=poses)
-    
+
+
+   # C-Space: Configuration Space. Makes the Robot easier to plan paths
+    @staticmethod
+    def calc_cspace(
+        mapdata: OccupancyGrid, include_cells: bool
+    ) -> "tuple[OccupancyGrid, Union[GridCells, None]]":
+        """
+        Calculates the C-Space, i.e., makes the obstacles in the map thicker.
+        Publishes the list of cells that were added to the original map.
+        :param mapdata [OccupancyGrid] The map data.
+        :return        [OccupancyGrid] The C-Space.
+        """
+        PADDING = 5  # The number of cells around the obstacles
+
+        # Create numpy grid from mapdata
+        width = mapdata.info.width
+        height = mapdata.info.height
+        map = np.array(mapdata.data).reshape(width, height).astype(np.uint8)
+
+        # Get mask of unknown areas
+        #
+        # This literally just gives another matrix where it is all 0 for entries that 
+        # are not 255 and 255 for entries that are 255
+        unknown_area_mask = cv2.inRange(
+            map, 255, 255
+        )  # -1 overflows to 255 when cast to uint8
+
+        ## Likely a 5x5 matrix with all 1s
+        kernel = np.ones((PADDING, PADDING), dtype=np.uint8)
+
+        # Erosion occurs here to shrink these regions, so core, central part
+        # of unknown area remain.
+        unknown_area_mask = cv2.erode(unknown_area_mask, kernel, iterations=1)
+
+        # Change unknown areas to free space
+        #
+        # 
+        map[map == 255] = 0
+
+        # Dilation occurs here to "thicken" obstacles so that robot will keep
+        # safe distance from robot
+        #
+        #
+        #
+        kernel = np.ones((PADDING, PADDING), np.uint8)
+        obstacle_mask = cv2.dilate(map, kernel, iterations=1)
+
+        # OR to combine dilated obstacle mask and eroded unknown area.
+        # other values don't really matter since we just want to know definite
+        # obstacles (walls) and areas that robot can potentially explore
+        cspace_data = cv2.bitwise_or(obstacle_mask, unknown_area_mask)
+        cspace_data = np.array(cspace_data).reshape(width * height).tolist()
+
+        # Return the C-space
+        cspace = OccupancyGrid(
+            header=mapdata.header, info=mapdata.info, data=cspace_data
+        )
+
+        # Return the cells that were added to the original map
+        cspace_cells = None
+        if include_cells:
+            cells = []
+
+            # Find the indices of the obstacle cells
+            obstacle_indices = np.where(obstacle_mask > 0)
+
+            # Convert the indices to cell coordinates and append them to cells
+            for y, x in zip(*obstacle_indices):
+                cells.append((x, y))
+
+            cspace_cells = PathPlanner.get_grid_cells(mapdata, cells)
+
+        return (cspace, cspace_cells)

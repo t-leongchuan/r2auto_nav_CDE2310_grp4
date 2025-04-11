@@ -18,7 +18,7 @@ from tf2_ros import LookupException, ConnectivityException, ExtrapolationExcepti
 from rclpy.duration import Duration
 
 SEARCH_RADIUS = 2.0  # Arbitrary value; consider the resolution of the occupancy grid.
-TEMPERATURE_THRESHOLD = 37.5  # Arbitrary value
+TEMPERATURE_THRESHOLD = 27  # Arbitrary value
 
 class ThermalTarget(Node):
 

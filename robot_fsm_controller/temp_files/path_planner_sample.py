@@ -1,122 +1,20 @@
-"""
-======================================================================
-File: frontier_search.py
-Author: Toh Leong Chuan
-Date: 16/03/25
+#!/usr/bin/env python3
 
-This file is based on original code and ideas by:
-    Kai Nakamura
-    https://kainakamura.com/project/slam-robot
-
-Description:
-    A Utility-Based class providing methods to build a ROS2 Path.
-    
-    Note: Not a ROS2 Node.
-
-Modifications:
-    - Minimal Changes were made.
-======================================================================
-"""
-
+import rospy
 import math
-import cv2 
-import rclpy
-import heapq
+import cv2
 import numpy as np
-from rclpy.node import Node
 from typing import Union
 from std_msgs.msg import Header
 from nav_msgs.msg import GridCells, OccupancyGrid, Path
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
-import random
-
-from collections import deque
-
+from priority_queue import PriorityQueue
+from tf.transformations import quaternion_from_euler
 
 
-'''
-TODO: Description of class
-
-Note: Not a ROS2 Node.
-'''
-
-
-####################################################################
 DIRECTIONS_OF_4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 DIRECTIONS_OF_8 = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
-
-'''
-WALKABLE_THRESHOLD:
-Values should be between 0 to 100.
-This is based on the Occupancy Grid Values, where:
-0 Means it is unoccupied,
-100 Means it is occupied (i.e. Obstacle/Wall)
--1 means unknown.
-'''
-
-# ==============================================================================
-# Constants used for collision avoidance and path planning
-# ==============================================================================
-
-# Inflate obstacles by this many grid cells to create buffer around walls
-# Effect: Keeps robot safely away from narrow gaps and thin obstacles
-PADDING = 4
-
-# Weight of obstacle proximity in A* pathfinding
-# Effect: Higher value makes robot stay closer to hallway centers
-COST_MAP_WEIGHT = 3000
-
-# Minimum path length before accepting a planned path
-# Effect: Filters out tiny risky paths that may lead into corners
-MIN_PATH_LENGTH = 4
-
-# Anything below this occupancy value is considered walkable.
-WALKABLE_THRESHOLD = 70
-
-
-
-####################################################################
-
-# To replace importing from tf.transformations
-def quaternion_from_euler(ai, aj, ak):
-    ai /= 2.0
-    aj /= 2.0
-    ak /= 2.0
-    ci = math.cos(ai)
-    si = math.sin(ai)
-    cj = math.cos(aj)
-    sj = math.sin(aj)
-    ck = math.cos(ak)
-    sk = math.sin(ak)
-    cc = ci*ck
-    cs = ci*sk
-    sc = si*ck
-    ss = si*sk
-
-    q = np.empty((4, ))
-    q[0] = cj*sc - sj*cs
-    q[1] = cj*ss + sj*cc
-    q[2] = cj*cs - sj*sc
-    q[3] = cj*cc + sj*ss
-
-    return q
-
-# To replace importing from tf.transformations
-class PriorityQueue:
-    def __init__(self):
-        self.elements = []
-        self.counter = 0
-
-    def empty(self):
-        return not self.elements
-
-    def put(self, item, priority):
-        heapq.heappush(self.elements, (priority, self.counter, item))
-        self.counter += 1
-
-    def get(self):
-        return heapq.heappop(self.elements)[2]
 
 class PathPlanner:
 
@@ -138,7 +36,6 @@ class PathPlanner:
         """
         return mapdata.data[PathPlanner.grid_to_index(mapdata, p)]
 
-    
     @staticmethod
     def euclidean_distance(
         p1: "tuple[float, float]", p2: "tuple[float, float]"
@@ -161,11 +58,7 @@ class PathPlanner:
         """
         x = (p[0] + 0.5) * mapdata.info.resolution + mapdata.info.origin.position.x
         y = (p[1] + 0.5) * mapdata.info.resolution + mapdata.info.origin.position.y
-        point = Point()
-        point.x = x
-        point.y = y
-        point.z = 0.0
-        return point
+        return Point(x, y, 0)
 
     @staticmethod
     def world_to_grid(mapdata: OccupancyGrid, wp: Point) -> "tuple[int, int]":
@@ -198,17 +91,12 @@ class PathPlanner:
                     next_cell[1] - cell[1], next_cell[0] - cell[0]
                 )
             q = quaternion_from_euler(0, 0, angle_to_next)
-            quaternion = Quaternion()
-            quaternion.x = q[0]
-            quaternion.y = q[1]
-            quaternion.z = q[2]
-            quaternion.w = q[3]
             poses.append(
                 PoseStamped(
                     header=Header(frame_id="map"),
                     pose=Pose(
                         position=PathPlanner.grid_to_world(mapdata, cell),
-                        orientation=quaternion,
+                        orientation=Quaternion(q[0], q[1], q[2], q[3]),
                     ),
                 )
             )
@@ -240,6 +128,7 @@ class PathPlanner:
         if not PathPlanner.is_cell_in_bounds(mapdata, p):
             return False
 
+        WALKABLE_THRESHOLD = 50
         return PathPlanner.get_cell_value(mapdata, p) < WALKABLE_THRESHOLD
 
     @staticmethod
@@ -335,7 +224,7 @@ class PathPlanner:
             cells=world_cells,
         )
 
-   # C-Space: Configuration Space. Makes the Robot easier to plan paths
+    # C-Space: Configuration Space. Makes the Robot easier to plan paths
     @staticmethod
     def calc_cspace(
         mapdata: OccupancyGrid, include_cells: bool
@@ -346,6 +235,7 @@ class PathPlanner:
         :param mapdata [OccupancyGrid] The map data.
         :return        [OccupancyGrid] The C-Space.
         """
+        PADDING = 5  # The number of cells around the obstacles
 
         # Create numpy grid from mapdata
         width = mapdata.info.width
@@ -372,11 +262,6 @@ class PathPlanner:
         # 
         map[map == 255] = 0
 
-        ## See which one works better. 
-        #
-        #map[map == 255] = 70  # Treat unknown as obstructed
-
-
         # Dilation occurs here to "thicken" obstacles so that robot will keep
         # safe distance from robot
         #
@@ -385,11 +270,12 @@ class PathPlanner:
         kernel = np.ones((PADDING, PADDING), np.uint8)
         obstacle_mask = cv2.dilate(map, kernel, iterations=1)
 
-
+        # OR to combine dilated obstacle mask and eroded unknown area.
+        # other values don't really matter since we just want to know definite
+        # obstacles (walls) and areas that robot can potentially explore
         cspace_data = cv2.bitwise_or(obstacle_mask, unknown_area_mask)
         cspace_data = np.array(cspace_data).reshape(width * height).tolist()
 
-        cspace_data = np.clip(cspace_data, -1, 100).tolist()
         # Return the C-space
         cspace = OccupancyGrid(
             header=mapdata.header, info=mapdata.info, data=cspace_data
@@ -399,8 +285,11 @@ class PathPlanner:
         cspace_cells = None
         if include_cells:
             cells = []
+
+            # Find the indices of the obstacle cells
             obstacle_indices = np.where(obstacle_mask > 0)
 
+            # Convert the indices to cell coordinates and append them to cells
             for y, x in zip(*obstacle_indices):
                 cells.append((x, y))
 
@@ -422,7 +311,7 @@ class PathPlanner:
 
     @staticmethod
     def calc_cost_map(mapdata: OccupancyGrid) -> np.ndarray:
-
+        rospy.loginfo("Calculating cost map")
 
         # Create numpy array from mapdata
         width = mapdata.info.width
@@ -576,9 +465,8 @@ class PathPlanner:
                 return current
 
             for neighbor in PathPlanner.neighbors_of_4(mapdata, current, False):
-                if neighbor not in visited:
-                    visited[neighbor] = True
-                    queue.append(neighbor)
+                visited[neighbor] = True
+                queue.append(neighbor)
 
         # If nothing found, just return original start cell
         return start
@@ -590,6 +478,8 @@ class PathPlanner:
         start: "tuple[int, int]",
         goal: "tuple[int, int]",
     ) -> "tuple[Union[list[tuple[int, int]], None], Union[float, None], tuple[int, int], tuple[int, int]]":
+        # What is this return type
+        COST_MAP_WEIGHT = 1000
 
         # If the start cell is not walkable, get the first walkable neighbor instead
         if not PathPlanner.is_cell_walkable(mapdata, start):
@@ -609,16 +499,7 @@ class PathPlanner:
         came_from = {}
         came_from[start] = None
 
-        cur_iteration = 0
-        MAX_ITERATION = 10000
-
         while not pq.empty():
-
-            if (cur_iteration == MAX_ITERATION):
-                return (None, None, start, goal)
-            
-            cur_iteration += 1
-            
             current = pq.get()
 
             if current == goal:
@@ -662,6 +543,8 @@ class PathPlanner:
             else:
                 return (None, None, start, goal)
 
+        # Prevent paths that are too short
+        MIN_PATH_LENGTH = 12
         if len(path) < MIN_PATH_LENGTH:
             return (None, None, start, goal)
 
@@ -670,7 +553,6 @@ class PathPlanner:
         path = path[:-POSES_TO_TRUNCATE]
 
         return (path, distance_cost_so_far[goal], start, goal)
-    
 
     @staticmethod
     def path_to_message(mapdata: OccupancyGrid, path: "list[tuple[int, int]]") -> Path:
@@ -681,4 +563,3 @@ class PathPlanner:
         """
         poses = PathPlanner.path_to_poses(mapdata, path)
         return Path(header=Header(frame_id="map"), poses=poses)
-    

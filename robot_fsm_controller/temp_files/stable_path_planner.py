@@ -32,8 +32,6 @@ import random
 
 from collections import deque
 
-
-
 '''
 TODO: Description of class
 
@@ -54,27 +52,13 @@ This is based on the Occupancy Grid Values, where:
 100 Means it is occupied (i.e. Obstacle/Wall)
 -1 means unknown.
 '''
+WALKABLE_THRESHOLD = 50
 
-# ==============================================================================
-# Constants used for collision avoidance and path planning
-# ==============================================================================
-
-# Inflate obstacles by this many grid cells to create buffer around walls
-# Effect: Keeps robot safely away from narrow gaps and thin obstacles
-PADDING = 4
-
-# Weight of obstacle proximity in A* pathfinding
-# Effect: Higher value makes robot stay closer to hallway centers
-COST_MAP_WEIGHT = 3000
-
-# Minimum path length before accepting a planned path
-# Effect: Filters out tiny risky paths that may lead into corners
+# Prevent paths that are too short
 MIN_PATH_LENGTH = 4
 
-# Anything below this occupancy value is considered walkable.
-WALKABLE_THRESHOLD = 70
 
-
+PADDING = 2  # The number of cells around the obstacles
 
 ####################################################################
 
@@ -576,9 +560,8 @@ class PathPlanner:
                 return current
 
             for neighbor in PathPlanner.neighbors_of_4(mapdata, current, False):
-                if neighbor not in visited:
-                    visited[neighbor] = True
-                    queue.append(neighbor)
+                visited[neighbor] = True
+                queue.append(neighbor)
 
         # If nothing found, just return original start cell
         return start
@@ -590,6 +573,8 @@ class PathPlanner:
         start: "tuple[int, int]",
         goal: "tuple[int, int]",
     ) -> "tuple[Union[list[tuple[int, int]], None], Union[float, None], tuple[int, int], tuple[int, int]]":
+        # What is this return type
+        COST_MAP_WEIGHT = 1000
 
         # If the start cell is not walkable, get the first walkable neighbor instead
         if not PathPlanner.is_cell_walkable(mapdata, start):
@@ -609,16 +594,7 @@ class PathPlanner:
         came_from = {}
         came_from[start] = None
 
-        cur_iteration = 0
-        MAX_ITERATION = 10000
-
         while not pq.empty():
-
-            if (cur_iteration == MAX_ITERATION):
-                return (None, None, start, goal)
-            
-            cur_iteration += 1
-            
             current = pq.get()
 
             if current == goal:
@@ -681,4 +657,3 @@ class PathPlanner:
         """
         poses = PathPlanner.path_to_poses(mapdata, path)
         return Path(header=Header(frame_id="map"), poses=poses)
-    

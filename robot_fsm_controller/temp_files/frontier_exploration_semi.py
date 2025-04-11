@@ -33,8 +33,6 @@ from cde2310_interfaces.msg import FrontierList
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 from rclpy.duration import Duration 
 import time ## TEST
-from std_msgs.msg import Header
-
 
 # TODO: Determine if it is worth the effort to write debugging code
 
@@ -67,7 +65,7 @@ MAX_NUM_FRONTIERS_TO_CHECK = 8
 '''
 TODO
 '''
-MIN_RANDOM_GOAL_DISTANCE = 3  # minimum distance (in grid cells) from current position
+RANDOM_ARRAY = [(10, 10), (-10, -10), (10, -10), (-10, 10)]
 
 ####################################################################
 
@@ -102,10 +100,6 @@ class FrontierExploration(Node):
         self.pure_pursuit_pub = self.create_publisher(
             Path, 'pure_pursuit_path', 10
         )
-
-        # For inflated map
-        self.cspace_pub = self.create_publisher(OccupancyGrid, 'inflated_map', 10)
-
 
         # Subscribers
         self.odom_sub = self.create_subscription(
@@ -221,17 +215,6 @@ class FrontierExploration(Node):
 
         c_space, cspace_cells = PathPlanner.calc_cspace(self.map, False)
 
-        # Publish inflated map for visualization
-        inflated_msg = OccupancyGrid()
-        inflated_msg.header = Header()
-        inflated_msg.header.stamp = self.get_clock().now().to_msg()
-        inflated_msg.header.frame_id = 'map'
-        inflated_msg.info = self.map.info
-        inflated_msg = c_space  # c_space is already an OccupancyGrid
-        inflated_msg.header.stamp = self.get_clock().now().to_msg()
-        c_space.header.stamp = self.get_clock().now().to_msg()
-        self.cspace_pub.publish(c_space)
-
         # Calculate the cost map
         cost_map = PathPlanner.calc_cost_map(self.map)
 
@@ -291,31 +274,41 @@ class FrontierExploration(Node):
             return
 
     def explore_randomly(self):
+
         # Get map dimensions from the occupancy grid
         width = self.map.info.width
         height = self.map.info.height
-        self.get_logger().info(f"Width: {width}, Height: {height}")
+        self.get_logger().info(f"Width:{width}, Height:{height}")
         max_attempts = 100
         random_goal_cell = None
 
-        # Get the current start cell (robot's position in grid coordinates)
-        start = PathPlanner.world_to_grid(self.map, self.pose.position)
+        # Try to find a random free cell
+        # Old Code:
+        #
+        # More stringent checks needed? Should implement minimum distance as well.
+        # for _ in range(max_attempts):
+        #     x = random.randint(0, width - 1)
+        #     y = random.randint(0, height - 1)
+        #     self.get_logger().info(f"random x (width):{x}, random y (height):{y}")
+        #     cell = (x, y)
+        #     self.get_logger().info(f"Current cell tested: {cell}")
+        #     if PathPlanner.is_cell_walkable(self.map, cell) and PathPlanner.is_cell_in_bounds(self.map, cell):
+        #         random_goal_cell = cell
+        #         break
+        while True:
+            rand_cardinal = random.randint(0, 3)
+            test = RANDOM_ARRAY[rand_cardinal]
+            start = PathPlanner.world_to_grid(self.map, self.pose.position)
+            start_x = start[0]
+            start_y = start[1]
+            x = test[0]
+            y = test[1]
+            self.get_logger().info(f"random x (width):{x}, random y (height):{y}")
+            cell = (x + start_x, y + start_y)
+            if PathPlanner.is_cell_walkable(self.map, cell) and PathPlanner.is_cell_in_bounds(self.map, cell):
+                random_goal_cell = cell
+                break
 
-        # Try to find a random free cell that is at least MIN_RANDOM_GOAL_DISTANCE away
-        for _ in range(max_attempts):
-            x = random.randint(0, width - 1)
-            y = random.randint(0, height - 1)
-            self.get_logger().info(f"Random candidate: ({x}, {y})")
-            cell = (x, y)
-            if not PathPlanner.is_cell_in_bounds(self.map, cell):
-                continue
-            if not PathPlanner.is_cell_walkable(self.map, cell):
-                continue
-            if PathPlanner.euclidean_distance(start, cell) < MIN_RANDOM_GOAL_DISTANCE:
-                continue
-            random_goal_cell = cell
-            self.get_logger().info(f"Random goal selected: {cell}")
-            break
 
         if random_goal_cell is None:
             self.get_logger().error("Random exploration: Failed to find a free cell for goal.")
@@ -323,24 +316,14 @@ class FrontierExploration(Node):
 
         # Calculate C-space and cost map as in frontier exploration.
         c_space, _ = PathPlanner.calc_cspace(self.map, False)
-        
-        # Publish inflated map for visualization
-        inflated_msg = OccupancyGrid()
-        inflated_msg.header = Header()
-        inflated_msg.header.stamp = self.get_clock().now().to_msg()
-        inflated_msg.header.frame_id = 'map'
-        inflated_msg.info = self.map.info
-        inflated_msg = c_space  # c_space is already an OccupancyGrid
-        inflated_msg.header.stamp = self.get_clock().now().to_msg()
-        c_space.header.stamp = self.get_clock().now().to_msg()
-        self.cspace_pub.publish(c_space)
-
-
         cost_map = PathPlanner.calc_cost_map(self.map)
 
-        self.get_logger().info(f"Start cell: {start}")
-        path, a_star_cost, start, goal = PathPlanner.a_star(c_space, cost_map, start, random_goal_cell)
-        self.get_logger().info("Call to A* finished")
+        start = PathPlanner.world_to_grid(self.map, self.pose.position)
+        self.get_logger().info(f"Start: {start}")
+
+        # After the logging happens, the call to a_star() takes very long and might be faulty?
+        path, a_star_cost, start, goal = PathPlanner.a_star(c_space, cost_map, start, random_goal_cell) # Sometimes hangs forever
+        self.get_logger().info("call to a_star finished")
         
         if path is not None and a_star_cost is not None:
             self.get_logger().info(f"Random exploration path found with cost {a_star_cost}")
@@ -348,61 +331,12 @@ class FrontierExploration(Node):
             self.pure_pursuit_pub.publish(path_msg)
             self.no_path_found_counter = 0
             self.no_frontiers_found_counter = 0
-
-            self.get_logger().info("Waiting for robot to reach random goal...")
-            time.sleep(10)  # Wait (adjust as needed) for the robot to reach the random goal
-
-            # Once at the goal, publish a rotation path 30° left...
-            self.publish_rotation_at_goal(random_goal_cell, 30)
-            time.sleep(2)  # Short pause between rotations
-            # ... and 30° right.
-            self.publish_rotation_at_goal(random_goal_cell, -30)
+            self.get_logger().warning("Sleeping hack for 45 seconds...") ## WHY DOES THIS WORK
+            time.sleep(45)
         else:
-            self.get_logger().warning("Random exploration: No path found with A*. Retrying...")
+            self.get_logger().warning("Random exploration: No path found. Retrying...")
             self.no_path_found_counter += 1
             self.check_if_finished_exploring()
-            return
-  
-    def publish_rotation_at_goal(self, goal_cell, angle_deg):
-        """
-        Publishes a simple two-pose path at the given goal cell that rotates the robot in place by angle_deg.
-        """
-        # Convert the goal grid cell to a world coordinate.
-        goal_point = PathPlanner.grid_to_world(self.map, goal_cell)
-        
-        # Create two PoseStamped messages: one with default orientation, and one rotated.
-        from geometry_msgs.msg import PoseStamped
-        pose_initial = PoseStamped()
-        pose_initial.header.frame_id = "map"
-        pose_initial.pose.position = goal_point
-        # Assume an initial orientation of 0 (identity quaternion).
-        pose_initial.pose.orientation.x = 0.0
-        pose_initial.pose.orientation.y = 0.0
-        pose_initial.pose.orientation.z = 0.0
-        pose_initial.pose.orientation.w = 1.0
-
-        # Compute the rotated orientation (about Z axis).
-        rotated_angle = math.radians(angle_deg)
-        from geometry_msgs.msg import Quaternion
-        rotated_quat = Quaternion()
-        rotated_quat.x = 0.0
-        rotated_quat.y = 0.0
-        rotated_quat.z = math.sin(rotated_angle/2)
-        rotated_quat.w = math.cos(rotated_angle/2)
-
-        pose_rotated = PoseStamped()
-        pose_rotated.header.frame_id = "map"
-        pose_rotated.pose.position = goal_point
-        pose_rotated.pose.orientation = rotated_quat
-
-        # Create a Path message with these two poses.
-        from nav_msgs.msg import Path
-        path_msg = Path()
-        path_msg.header.frame_id = "map"
-        path_msg.poses = [pose_initial, pose_rotated]
-        
-        self.pure_pursuit_pub.publish(path_msg)
-        self.get_logger().info(f"Published rotation path at goal with a {angle_deg}° offset.")
 
     
     # TODO
