@@ -155,7 +155,6 @@ The system is built around a multi-node ROS 2 architecture distributed across tw
 |--------------------|----------|
 | `raspi_firing.py`  | Drives servo and flywheels to launch ping pong balls. |
 | `raspi_thermal.py` | Publishes thermal data from the AMG8833 sensor. |
-| `hardware_control.py` | (Legacy) Simple GPIO actuation via Bool topic trigger. |
 
 ---
 
