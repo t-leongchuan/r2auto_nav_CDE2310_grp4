@@ -1,8 +1,8 @@
-# EG2310 Autonomous TurtleBot3 Project
+# CDE2310 Autonomous TurtleBot3 Project
 
 ## Overview
 
-This repository contains the implementation of a ROS2-based autonomous robot system developed for the CDE2310 course project. The system is designed to control a TurtleBot3 (Burger) equipped with a Raspberry Pi 4, capable of navigating a constrained environment, identifying infrared heat signatures, and activating a projectile launcher mechanism.
+This repository contains the implementation of a ROS2-based autonomous robot system developed for the CDE2310 AY24/25 course project. The system is designed to control a TurtleBot3 (Burger) equipped with a Raspberry Pi 4, capable of navigating a constrained environment, identifying infrared heat signatures, and activating a projectile launcher mechanism.
 
 ## Project Objectives
 
@@ -76,13 +76,17 @@ Ensure that both systems share the same ROS domain ID and that networking (e.g.,
 
 ```
 .
-├── e2_assignment.py         # Main autonomous navigation and trigger node
-├── r2auto_nav.py            # Alternate/refined navigation script (standalone)
-├── hardware_control.py      # GPIO node to control solenoid and servo
-├── <design-documents>.pdf   # Project documentation (PDR brief, diagrams, etc.)
-├── lidar.txt, map.txt       # Output logs for LIDAR and occupancy grid
-└── README.md                # Project documentation and setup guide
+├── remote_computer_launch/     # Launch files for the remote computer (navigation, FSM)
+├── remote_computer_ws/         # ROS2 workspace containing remote-side source code and packages
+├── turtlebot3_launch/          # Launch files for the TurtleBot3 (hardware bring-up, GPIO control)
+├── turtlebot3_ws/              # ROS2 workspace for the TurtleBot3 (Raspberry Pi) environment
+├── docs/                       # Project documentation, design review slides, final report, etc.
+├── README.md                   # Project overview and setup instructions
+└── .gitattributes              # Git attributes configuration
 ```
+
+> All source code and configurations are organized by execution context (remote computer vs. onboard TurtleBot). Documentation and final deliverables are stored in the `docs/` directory for clarity and submission readiness.
+
 
 ## Software Architecture
 
@@ -104,22 +108,6 @@ Ensure that both systems share the same ROS domain ID and that networking (e.g.,
 - RPi.GPIO (on Raspberry Pi)
 - cv2
 
-### Running the System
-
-On the **remote computer** (for navigation and decision-making):
-
-```bash
-ros2 run <package_name> e2_assignment
-```
-
-On the **TurtleBot (Raspberry Pi)** (for hardware control):
-
-```bash
-ros2 run <package_name> hardware_control
-```
-
-Ensure ROS2 networking is correctly configured using environment variables or DDS settings.
-
 ## Hardware Setup
 
 - Servo Motor: Connected to GPIO Pin 18
@@ -132,15 +120,13 @@ Ensure ROS2 networking is correctly configured using environment variables or DD
 - Standalone testing of GPIO activation.
 - Full integration test within a mock maze environment replicating mission constraints.
 
-## License
-
-This project is licensed under the Apache License 2.0.
 
 ## Acknowledgements
 
-This repository was developed as part of the EG2310 course requirements at the College of Design and Engineering, National University of Singapore.
+This repository was developed as part of the CDE2310 course requirements at the College of Design and Engineering, National University of Singapore.
 
 Team Members:
-- [Name]
-- [Name]
-- [Name]
+- Irfan
+- Charlie Hee
+- Manya Gupta
+- Toh Leong Chuan
