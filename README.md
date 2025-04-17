@@ -90,15 +90,75 @@ Ensure that both systems share the same ROS domain ID and that networking (e.g.,
 
 ## Software Architecture
 
-- **ROS2 Nodes**
-  - `auto_nav`: Navigation logic, LIDAR processing, and obstacle avoidance.
-  - `hardware_control`: GPIO control logic, subscribing to a trigger topic.
-- **Topics**
-  - `/scan`: LIDAR scan data (LaserScan)
-  - `/odom`: Odometry data (Odometry)
-  - `/map`: Occupancy grid (OccupancyGrid)
-  - `/cmd_vel`: Motion command output (Twist)
-  - `/trigger_hardware`: Custom topic to initiate hardware action (Bool)
+The system is built around a multi-node ROS 2 architecture distributed across two platforms:
+
+- **TurtleBot3 (Raspberry Pi 4)** – handles low-level hardware actuation and sensing.
+- **Remote Computer** – manages high-level behavior, navigation, and supervision logic.
+
+### Core Packages
+
+- `cde2310_interfaces/`  
+  Custom message and service definitions:
+  - `ActivateNode.srv` – used to activate or deactivate a node.
+  - `NodeFinish.srv` – used to indicate whether a node has completed its task.
+  - `Frontier.msg` – contains metadata of a single frontier (size, centroid).
+  - `FrontierList.msg` – contains a list of `Frontier` messages.
+
+---
+
+### Topics
+
+| Topic                        | Message Type                      | Publisher Node(s)        | Description |
+|-----------------------------|-----------------------------------|---------------------------|-------------|
+| `/cmd_vel`                  | `geometry_msgs/msg/Twist`         | Multiple                  | Movement commands for TurtleBot3. |
+| `/scan`                     | `sensor_msgs/msg/LaserScan`       | TurtleBot3 (built-in)     | LIDAR data. |
+| `/odom`                     | `nav_msgs/msg/Odometry`           | TurtleBot3 (built-in)     | Robot pose and orientation. |
+| `/map`                      | `nav_msgs/msg/OccupancyGrid`      | SLAM/cartographer         | Map for path planning and frontier search. |
+| `/pure_pursuit_path`        | `nav_msgs/msg/Path`               | `frontier_exploration`    | Path to follow based on frontier exploration. |
+| `/heat_source_detected`     | `std_msgs/msg/Float32MultiArray`  | `amg_sensor_node`         | Thermal sensor data (8x8 grid). |
+| `/robot_fire`               | `ActivateNode.srv`                | `firing` (remote) → `raspi_firing` | Fires 3 ping pong balls. |
+| `/target_detected`          | `ActivateNode.srv`                | `thermal_target` → `supervisor` | Signals when a target is detected. |
+
+---
+
+### Services
+
+| Service Name                 | Type                  | Server Node         | Purpose |
+|-----------------------------|-----------------------|---------------------|---------|
+| `activate_exploration`      | `ActivateNode`        | `exploration`       | Starts/stops frontier exploration. |
+| `pure_pursuit_finish`       | `NodeFinish`          | `exploration`       | Indicates end of pure pursuit. |
+| `activate_pure_pursuit`     | `ActivateNode`        | `pure_pursuit`      | Toggles path-following behavior. |
+| `activate_alignment`        | `ActivateNode`        | `alignment`         | Starts/stops thermal-based alignment. |
+| `alignment_finish`          | `NodeFinish`          | `alignment`         | Indicates completion of alignment. |
+| `activate_firing`           | `ActivateNode`        | `firing`, `raspi_firing` | Starts firing logic remotely and physically. |
+| `firing_finish`             | `NodeFinish`          | `firing`            | Firing complete signal. |
+| `firing_finish_robot`       | `NodeFinish`          | `raspi_firing` → `firing` | Firing complete signal (hardware level). |
+
+---
+
+### Node Overview
+
+#### Remote Computer Nodes
+
+| Node               | Function |
+|--------------------|----------|
+| `supervisor.py`     | Central FSM managing mission phases: exploration → alignment → firing. |
+| `exploration.py`    | High-level controller for starting/stopping exploration. |
+| `frontier_exploration.py` | Generates navigation goals from frontier-based exploration. |
+| `pure_pursuit.py`   | Executes path-following to reach frontier goals. |
+| `alignment.py`      | Adjusts heading based on AMG8833 thermal sensor readings. |
+| `thermal_target.py` | Detects new thermal targets using temperature thresholding and spatial memory. |
+| `firing.py`         | Relays firing commands to the robot and receives firing status. |
+
+#### TurtleBot3 Nodes (Raspberry Pi)
+
+| Node               | Function |
+|--------------------|----------|
+| `raspi_firing.py`  | Drives servo and flywheels to launch ping pong balls. |
+| `raspi_thermal.py` | Publishes thermal data from the AMG8833 sensor. |
+| `hardware_control.py` | (Legacy) Simple GPIO actuation via Bool topic trigger. |
+
+---
 
 ### Requirements
 
