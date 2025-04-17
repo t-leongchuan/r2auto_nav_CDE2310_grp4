@@ -132,7 +132,6 @@ The system is built around a multi-node ROS 2 architecture distributed across tw
 | `alignment_finish`          | `NodeFinish`          | `alignment`         | Indicates completion of alignment. |
 | `activate_firing`           | `ActivateNode`        | `firing`, `raspi_firing` | Starts firing logic remotely and physically. |
 | `firing_finish`             | `NodeFinish`          | `firing`            | Firing complete signal. |
-| `firing_finish_robot`       | `NodeFinish`          | `raspi_firing` → `firing` | Firing complete signal (hardware level). |
 
 ---
 
