@@ -16,6 +16,10 @@ The primary mission is as follows:
 
 ## Quick Start Guide
 
+> **Note:** This guide assumes a basic to intermediate understanding of ROS 2 (Humble). If you are new to ROS 2 or require a refresher, refer to the official ROS 2 Humble tutorials:  
+> [https://docs.ros.org/en/humble/Tutorials.html](https://docs.ros.org/en/humble/Tutorials.html)
+
+
 This guide outlines the necessary steps to set up and run the full system across both the TurtleBot3 platform and a remote computer.
 
 ### 0. Prerequisites
